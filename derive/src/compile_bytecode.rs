@@ -186,10 +186,10 @@ impl CompilationSource {
 
     fn parse_pylinks<'a>(
         &'a self,
-        path: PathBuf,
+        pylinks_path: PathBuf,
     ) -> impl Iterator<Item = DiagResult<DirEntry>> + 'a {
         // if the file doesn't exist, we just ignore it
-        let mut pylinks_lines = fs::File::open(&path)
+        let mut pylinks_lines = fs::File::open(&pylinks_path)
             .map(|f| io::BufReader::new(f).lines())
             .ok();
         std::iter::from_fn(move || {
@@ -198,7 +198,10 @@ impl CompilationSource {
                 Err(e) => {
                     return Some(Err(Diagnostic::spans_error(
                         self.span,
-                        format!("failed to read line from pylinks file {:?}: {}", path, e),
+                        format!(
+                            "failed to read line from pylinks file {:?}: {}",
+                            pylinks_path, e
+                        ),
                     )))
                 }
             };
@@ -206,12 +209,25 @@ impl CompilationSource {
             if line.is_empty() {
                 return None;
             }
-            let mut split = line.rsplitn(2, ':');
-            let filepath = path.parent().unwrap().join(split.next()?);
-            let module_name = split.next().map(ToOwned::to_owned).unwrap_or_else(|| {
-                // this line has only a file path, so we use the basename as the module name
-                filepath.file_stem().unwrap().to_string_lossy().into_owned()
-            });
+            let mut split = line.splitn(2, ':');
+            // `a` is the first and/or the only component
+            let a = split.next()?;
+            // `b`, if it exists, is the actual filepath for the module while `a` is the module name
+            let b = split.next();
+            let (module_name, filepath): (String, &Path) = match b {
+                Some(ref b) => {
+                    // thie line has the form `module_name:../filepath.py`
+                    (a.to_string(), Path::new(b))
+                }
+                None => {
+                    // this line has only a file path, so we use the basename as the module name
+                    let filepath = Path::new(a);
+                    let module_name = filepath.file_stem().unwrap().to_string_lossy().into_owned();
+                    (module_name, filepath)
+                }
+            };
+            // resolve the file path from the parent directory of the pylinks file
+            let filepath = pylinks_path.parent().unwrap().join(filepath);
             Some(Ok(DirEntry {
                 module_name,
                 filepath,
