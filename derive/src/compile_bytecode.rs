@@ -20,8 +20,8 @@ use rustpython_bytecode::bytecode::{CodeObject, FrozenModule};
 use rustpython_compiler::compile;
 use std::collections::HashMap;
 use std::env;
+use std::ffi::OsStr;
 use std::fs;
-use std::io::{self, prelude::*};
 use std::path::{Path, PathBuf};
 use syn::parse::{Parse, ParseStream, Result as ParseResult};
 use syn::{self, parse2, Lit, LitByteStr, LitStr, Meta, Token};
@@ -105,11 +105,43 @@ impl CompilationSource {
         mode: compile::Mode,
     ) -> DiagResult<HashMap<String, FrozenModule>> {
         let mut code_map = HashMap::new();
-        for entry in self.get_dir_entries(path)? {
-            let DirEntry {
-                module_name,
-                filepath,
-            } = entry?;
+
+        let paths = fs::read_dir(&path).map_err(|err| {
+            Diagnostic::spans_error(self.span, format!("Error listing dir {:?}: {}", path, err))
+        })?;
+
+        for entry in paths {
+            let entry: fs::DirEntry = entry.map_err(|err| {
+                Diagnostic::spans_error(self.span, format!("Failed to list file: {}", err))
+            })?;
+            let path = entry.path();
+
+            let module_name = path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .ok_or_else(|| {
+                    Diagnostic::spans_error(
+                        self.span,
+                        format!("Couldn't get module name from path {:?}", path),
+                    )
+                })?
+                .to_string();
+
+            let filepath: std::borrow::Cow<Path> = match path.extension().and_then(OsStr::to_str) {
+                Some("py") => path.into(),
+                None if path.is_dir() => path.into(),
+                Some("pylink") => {
+                    let s = fs::read_to_string(&path).map_err(|err| {
+                        Diagnostic::spans_error(
+                            self.span,
+                            format!("Couldn't read pylink file {:?}: {}", path, err),
+                        )
+                    })?;
+                    path.parent().unwrap().join(s.trim()).into()
+                }
+                _ => continue,
+            };
+
             if filepath.is_dir() {
                 code_map.extend(self.compile_dir(
                     &filepath,
@@ -142,103 +174,6 @@ impl CompilationSource {
         }
         Ok(code_map)
     }
-
-    fn get_dir_entries<'a>(
-        &'a self,
-        path: &Path,
-    ) -> DiagResult<impl Iterator<Item = DiagResult<DirEntry>> + 'a> {
-        let paths = fs::read_dir(&path)
-            .map_err(|err| {
-                Diagnostic::spans_error(self.span, format!("Error listing dir {:?}: {}", path, err))
-            })?
-            .filter(|e| {
-                e.as_ref().ok().map_or(true, |e| {
-                    e.path().is_dir() || e.path().extension() == Some("py".as_ref())
-                })
-            })
-            .map(move |entry| -> DiagResult<DirEntry> {
-                let entry = entry.map_err(|err| {
-                    Diagnostic::spans_error(self.span, format!("Failed to list file: {}", err))
-                })?;
-                let filepath = entry.path();
-                // what? this is _obviously_ the clearest and most idiomatic way to express this (/s)
-                let module_name = filepath
-                    .canonicalize()
-                    .ok()
-                    .as_ref()
-                    .and_then(|p| p.file_stem())
-                    .and_then(|s| s.to_str())
-                    .ok_or_else(|| {
-                        Diagnostic::spans_error(
-                            self.span,
-                            format!("Couldn't get module name from path {:?}", filepath),
-                        )
-                    })?
-                    .to_string();
-                Ok(DirEntry {
-                    module_name,
-                    filepath,
-                })
-            });
-        let pylinks = self.parse_pylinks(path.join("pylinks"));
-        Ok(paths.chain(pylinks))
-    }
-
-    fn parse_pylinks<'a>(
-        &'a self,
-        pylinks_path: PathBuf,
-    ) -> impl Iterator<Item = DiagResult<DirEntry>> + 'a {
-        // if the file doesn't exist, we just ignore it
-        let mut pylinks_lines = fs::File::open(&pylinks_path)
-            .map(|f| io::BufReader::new(f).lines())
-            .ok();
-        std::iter::from_fn(move || {
-            let line = match pylinks_lines.as_mut()?.next()? {
-                Ok(l) => l,
-                Err(e) => {
-                    return Some(Err(Diagnostic::spans_error(
-                        self.span,
-                        format!(
-                            "failed to read line from pylinks file {:?}: {}",
-                            pylinks_path, e
-                        ),
-                    )))
-                }
-            };
-            let line = line.trim();
-            if line.is_empty() {
-                return None;
-            }
-            let mut split = line.splitn(2, ':');
-            // `a` is the first and/or the only component
-            let a = split.next()?;
-            // `b`, if it exists, is the actual filepath for the module while `a` is the module name
-            let b = split.next();
-            let (module_name, filepath): (String, &Path) = match b {
-                Some(ref b) => {
-                    // thie line has the form `module_name:../filepath.py`
-                    (a.to_string(), Path::new(b))
-                }
-                None => {
-                    // this line has only a file path, so we use the basename as the module name
-                    let filepath = Path::new(a);
-                    let module_name = filepath.file_stem().unwrap().to_string_lossy().into_owned();
-                    (module_name, filepath)
-                }
-            };
-            // resolve the file path from the parent directory of the pylinks file
-            let filepath = pylinks_path.parent().unwrap().join(filepath);
-            Some(Ok(DirEntry {
-                module_name,
-                filepath,
-            }))
-        })
-    }
-}
-
-struct DirEntry {
-    module_name: String,
-    filepath: PathBuf,
 }
 
 /// This is essentially just a comma-separated list of Meta nodes, aka the inside of a MetaList.
