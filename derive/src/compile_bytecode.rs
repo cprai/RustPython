@@ -13,14 +13,13 @@
 //! )
 //! ```
 
-use crate::{extract_spans, DiagResult, Diagnostic};
+use crate::{extract_spans, Diagnostic};
 use proc_macro2::{Span, TokenStream as TokenStream2};
 use quote::quote;
 use rustpython_bytecode::bytecode::{CodeObject, FrozenModule};
 use rustpython_compiler::compile;
 use std::collections::HashMap;
 use std::env;
-use std::ffi::OsStr;
 use std::fs;
 use std::path::{Path, PathBuf};
 use syn::parse::{Parse, ParseStream, Result as ParseResult};
@@ -43,7 +42,7 @@ impl CompilationSource {
         source: &str,
         mode: compile::Mode,
         module_name: String,
-    ) -> DiagResult<CodeObject> {
+    ) -> Result<CodeObject, Diagnostic> {
         compile::compile(source, mode, module_name, 0)
             .map_err(|err| Diagnostic::spans_error(self.span, format!("Compile error: {}", err)))
     }
@@ -52,20 +51,13 @@ impl CompilationSource {
         &self,
         mode: compile::Mode,
         module_name: String,
-    ) -> DiagResult<HashMap<String, FrozenModule>> {
-        let map = match &self.kind {
+    ) -> Result<HashMap<String, FrozenModule>, Diagnostic> {
+        Ok(match &self.kind {
             CompilationSourceKind::File(rel_path) => {
                 let mut path = PathBuf::from(
                     env::var_os("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR is not present"),
                 );
                 path.push(rel_path);
-                if path.is_dir() {
-                    return self.compile_dir(
-                        &path,
-                        path.to_string_lossy().into(),
-                        compile::Mode::Exec,
-                    );
-                }
                 let source = fs::read_to_string(&path).map_err(|err| {
                     Diagnostic::spans_error(
                         self.span,
@@ -94,8 +86,7 @@ impl CompilationSource {
                 path.push(rel_path);
                 self.compile_dir(&path, String::new(), mode)?
             }
-        };
-        Ok(map)
+        })
     }
 
     fn compile_dir(
@@ -103,65 +94,40 @@ impl CompilationSource {
         path: &Path,
         parent: String,
         mode: compile::Mode,
-    ) -> DiagResult<HashMap<String, FrozenModule>> {
+    ) -> Result<HashMap<String, FrozenModule>, Diagnostic> {
         let mut code_map = HashMap::new();
-
         let paths = fs::read_dir(&path).map_err(|err| {
             Diagnostic::spans_error(self.span, format!("Error listing dir {:?}: {}", path, err))
         })?;
-
-        for entry in paths {
-            let entry: fs::DirEntry = entry.map_err(|err| {
+        for path in paths {
+            let path = path.map_err(|err| {
                 Diagnostic::spans_error(self.span, format!("Failed to list file: {}", err))
             })?;
-            let path = entry.path();
-
-            let module_name = path
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .ok_or_else(|| {
-                    Diagnostic::spans_error(
-                        self.span,
-                        format!("Couldn't get module name from path {:?}", path),
-                    )
-                })?
-                .to_string();
-
-            let filepath: std::borrow::Cow<Path> = match path.extension().and_then(OsStr::to_str) {
-                Some("py") => path.into(),
-                None if path.is_dir() => path.into(),
-                Some("pylink") => {
-                    let s = fs::read_to_string(&path).map_err(|err| {
-                        Diagnostic::spans_error(
-                            self.span,
-                            format!("Couldn't read pylink file {:?}: {}", path, err),
-                        )
-                    })?;
-                    path.parent().unwrap().join(s.trim()).into()
-                }
-                _ => continue,
-            };
-
-            if filepath.is_dir() {
+            let path = path.path();
+            let file_name = path.file_name().unwrap().to_str().ok_or_else(|| {
+                Diagnostic::spans_error(self.span, format!("Invalid UTF-8 in file name {:?}", path))
+            })?;
+            if path.is_dir() {
                 code_map.extend(self.compile_dir(
-                    &filepath,
-                    format!("{}{}", parent, module_name),
+                    &path,
+                    format!("{}{}", parent, file_name),
                     mode,
                 )?);
-            } else {
-                let source = fs::read_to_string(&filepath).map_err(|err| {
+            } else if file_name.ends_with(".py") {
+                let source = fs::read_to_string(&path).map_err(|err| {
                     Diagnostic::spans_error(
                         self.span,
-                        format!("Error reading file {:?}: {}", filepath, err),
+                        format!("Error reading file {:?}: {}", path, err),
                     )
                 })?;
-                let is_init = module_name == "__init__";
+                let stem = path.file_stem().unwrap().to_str().unwrap();
+                let is_init = stem == "__init__";
                 let module_name = if is_init {
                     parent.clone()
                 } else if parent.is_empty() {
-                    module_name
+                    stem.to_string()
                 } else {
-                    format!("{}.{}", parent, module_name)
+                    format!("{}.{}", parent, stem)
                 };
                 code_map.insert(
                     module_name.clone(),
@@ -183,12 +149,12 @@ struct PyCompileInput {
 }
 
 impl PyCompileInput {
-    fn compile(&self) -> DiagResult<HashMap<String, FrozenModule>> {
+    fn compile(&self) -> Result<HashMap<String, FrozenModule>, Diagnostic> {
         let mut module_name = None;
         let mut mode = None;
         let mut source: Option<CompilationSource> = None;
 
-        fn assert_source_empty(source: &Option<CompilationSource>) -> DiagResult<()> {
+        fn assert_source_empty(source: &Option<CompilationSource>) -> Result<(), Diagnostic> {
             if let Some(source) = source {
                 Err(Diagnostic::spans_error(
                     source.span,
@@ -273,7 +239,7 @@ impl Parse for PyCompileInput {
     }
 }
 
-pub fn impl_py_compile_bytecode(input: TokenStream2) -> DiagResult<TokenStream2> {
+pub fn impl_py_compile_bytecode(input: TokenStream2) -> Result<TokenStream2, Diagnostic> {
     let input: PyCompileInput = parse2(input)?;
 
     let code_map = input.compile()?;
