@@ -580,9 +580,15 @@ impl VirtualMachine {
         } else if let Some(PyMethod {
             ref function,
             ref object,
+            actually_bind,
         }) = func_ref.payload()
         {
-            self.invoke(&function, args.insert(object.clone()))
+            let args = if *actually_bind {
+                args.insert(object.clone())
+            } else {
+                args
+            };
+            self.invoke(&function, args)
         } else if let Some(PyBuiltinFunction { ref value }) = func_ref.payload() {
             value(self, args)
         } else if self.is_callable(&func_ref) {
