@@ -6,28 +6,29 @@
 
 pub use crate::location::Location;
 use num_bigint::BigInt;
+use serde::{Serialize, Deserialize};
 
 #[allow(clippy::large_enum_variant)]
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub enum Top {
     Program(Program),
     Statement(Vec<Statement>),
     Expression(Expression),
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 /// A full python program, it's a sequence of statements.
 pub struct Program {
     pub statements: Suite,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct ImportSymbol {
     pub symbol: String,
     pub alias: Option<String>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct Located<T> {
     pub location: Location,
     pub node: T,
@@ -37,7 +38,7 @@ pub type Statement = Located<StatementType>;
 pub type Suite = Vec<Statement>;
 
 /// Abstract syntax tree nodes for python statements.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub enum StatementType {
     /// A [`break`](https://docs.python.org/3/reference/simple_stmts.html#the-break-statement) statement.
     Break,
@@ -169,7 +170,7 @@ pub enum StatementType {
     },
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct WithItem {
     pub context_expr: Expression,
     pub optional_vars: Option<Expression>,
@@ -179,7 +180,7 @@ pub struct WithItem {
 pub type Expression = Located<ExpressionType>;
 
 /// A certain type of expression.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub enum ExpressionType {
     BoolOp {
         op: BooleanOperator,
@@ -372,7 +373,7 @@ impl Expression {
 ///
 /// In cpython this is called arguments, but we choose parameters to
 /// distinguish between function parameters and actual call arguments.
-#[derive(Clone, Debug, PartialEq, Default)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
 pub struct Parameters {
     pub args: Vec<Parameter>,
     pub kwonlyargs: Vec<Parameter>,
@@ -383,7 +384,7 @@ pub struct Parameters {
 }
 
 /// A single formal parameter to a function.
-#[derive(Clone, Debug, PartialEq, Default)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
 pub struct Parameter {
     pub location: Location,
     pub arg: String,
@@ -391,7 +392,7 @@ pub struct Parameter {
 }
 
 #[allow(clippy::large_enum_variant)]
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub enum ComprehensionKind {
     GeneratorExpression { element: Expression },
     List { element: Expression },
@@ -400,7 +401,7 @@ pub enum ComprehensionKind {
 }
 
 /// A list/set/dict/generator compression.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct Comprehension {
     pub location: Location,
     pub target: Expression,
@@ -409,19 +410,19 @@ pub struct Comprehension {
     pub is_async: bool,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct ArgumentList {
     pub args: Vec<Expression>,
     pub keywords: Vec<Keyword>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct Keyword {
     pub name: Option<String>,
     pub value: Expression,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct ExceptHandler {
     pub location: Location,
     pub typ: Option<Expression>,
@@ -430,7 +431,7 @@ pub struct ExceptHandler {
 }
 
 /// An operator for a binary operation (an operation with two operands).
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub enum Operator {
     Add,
     Sub,
@@ -448,14 +449,14 @@ pub enum Operator {
 }
 
 /// A boolean operation.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub enum BooleanOperator {
     And,
     Or,
 }
 
 /// An unary operator. This is an operation with only a single operand.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub enum UnaryOperator {
     Pos,
     Neg,
@@ -464,7 +465,7 @@ pub enum UnaryOperator {
 }
 
 /// A comparison operation.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub enum Comparison {
     Equal,
     NotEqual,
@@ -479,7 +480,7 @@ pub enum Comparison {
 }
 
 /// A numeric literal.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub enum Number {
     Integer { value: BigInt },
     Float { value: f64 },
@@ -487,7 +488,7 @@ pub enum Number {
 }
 
 /// Transforms a value prior to formatting it.
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub enum ConversionFlag {
     /// Converts by calling `str(<value>)`.
     Str,
@@ -497,7 +498,7 @@ pub enum ConversionFlag {
     Repr,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub enum StringGroup {
     Constant {
         value: String,
@@ -512,7 +513,7 @@ pub enum StringGroup {
     },
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub enum Varargs {
     None,
     Unnamed,
