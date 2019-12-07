@@ -16,6 +16,7 @@ use num_bigint::BigInt;
 use num_traits::ToPrimitive;
 #[cfg(feature = "rustpython-compiler")]
 use rustpython_compiler::{compile, error::CompileError};
+use rustpython_parser::{ast};
 
 use crate::builtins::{self, to_ascii};
 use crate::bytecode;
@@ -68,6 +69,7 @@ pub struct VirtualMachine {
     pub signal_handlers: RefCell<[PyObjectRef; NSIG]>,
     pub settings: PySettings,
     pub recursion_limit: Cell<usize>,
+    pub import_callback: Option<&'static dyn Fn(ast::Program) -> ast::Program>,
 }
 
 pub const NSIG: usize = 64;
@@ -183,6 +185,7 @@ impl VirtualMachine {
             signal_handlers,
             settings,
             recursion_limit: Cell::new(512),
+            import_callback: None,
         };
 
         objmodule::init_module_dict(
@@ -203,6 +206,13 @@ impl VirtualMachine {
 
         #[cfg(not(target_arch = "wasm32"))]
         import::import_builtin(&vm, "signal").expect("Couldn't initialize signal module");
+
+        vm
+    }
+
+    pub fn new_with_callback(settings: PySettings, import_callback: &'static dyn Fn(ast::Program) -> ast::Program) -> VirtualMachine {
+        let mut vm = VirtualMachine::new(settings);
+        vm.import_callback = Some(import_callback);
 
         vm
     }

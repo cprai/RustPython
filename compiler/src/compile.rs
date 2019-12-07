@@ -76,6 +76,30 @@ pub fn compile(
     }
 }
 
+pub fn compile_with_callback(
+    source: &str,
+    mode: Mode,
+    source_path: String,
+    optimize: u8,
+    import_callback: &'static dyn Fn(ast::Program) -> ast::Program,
+) -> Result<CodeObject, CompileError> {
+    match mode {
+        Mode::Exec => {
+            let ast = parser::parse_program(source)?;
+            let modified_ast = import_callback(ast);
+            compile_program(modified_ast, source_path, optimize)
+        }
+        Mode::Eval => {
+            let statement = parser::parse_statement(source)?;
+            compile_statement_eval(statement, source_path, optimize)
+        }
+        Mode::Single => {
+            let ast = parser::parse_program(source)?;
+            compile_program_single(ast, source_path, optimize)
+        }
+    }
+}
+
 /// A helper function for the shared code of the different compile functions
 fn with_compiler(
     source_path: String,
