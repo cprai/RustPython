@@ -76,12 +76,12 @@ pub fn compile(
     }
 }
 
-pub fn compile_with_callback<'a>(
+pub fn compile_with_callback(
     source: &str,
     mode: Mode,
     source_path: String,
     optimize: u8,
-    import_callback: &'a dyn Fn(ast::Program, &str) -> ast::Program,
+    import_callback: &'static dyn Fn(ast::Program, &str) -> ast::Program,
 ) -> Result<CodeObject, CompileError> {
     match mode {
         Mode::Exec => {

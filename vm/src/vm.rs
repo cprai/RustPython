@@ -53,7 +53,7 @@ use crate::sysmodule;
 
 /// Top level container of a python virtual machine. In theory you could
 /// create more instances of this struct and have them operate fully isolated.
-pub struct VirtualMachine<'a> {
+pub struct VirtualMachine {
     pub builtins: PyObjectRef,
     pub sys_module: PyObjectRef,
     pub stdlib_inits: RefCell<HashMap<String, stdlib::StdlibInitFunc>>,
@@ -69,7 +69,7 @@ pub struct VirtualMachine<'a> {
     pub signal_handlers: RefCell<[PyObjectRef; NSIG]>,
     pub settings: PySettings,
     pub recursion_limit: Cell<usize>,
-    pub import_callback: Option<&'a dyn Fn(ast::Program, &str) -> ast::Program>,
+    pub import_callback: Option<&'static dyn Fn(ast::Program, &str) -> ast::Program>,
 }
 
 pub const NSIG: usize = 64;
@@ -210,7 +210,7 @@ impl VirtualMachine {
         vm
     }
 
-    pub fn new_with_callback<'a>(settings: PySettings, import_callback: &'a dyn Fn(ast::Program, &str) -> ast::Program) -> VirtualMachine {
+    pub fn new_with_callback<'a>(settings: PySettings, import_callback: &'static dyn Fn(ast::Program, &str) -> ast::Program) -> VirtualMachine {
         let mut vm = VirtualMachine::new(settings);
         vm.import_callback = Some(import_callback);
 
