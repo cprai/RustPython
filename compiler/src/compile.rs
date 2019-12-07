@@ -86,7 +86,7 @@ pub fn compile_with_callback(
     match mode {
         Mode::Exec => {
             let ast = parser::parse_program(source)?;
-            let modified_ast = import_callback(ast);
+            let modified_ast = import_callback(ast, source);
             compile_program(modified_ast, source_path, optimize)
         }
         Mode::Eval => {
