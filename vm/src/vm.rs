@@ -1015,8 +1015,12 @@ impl VirtualMachine {
         mode: compile::Mode,
         source_path: String,
     ) -> Result<PyCodeRef, CompileError> {
-        compile::compile(source, mode, source_path, self.settings.optimize)
-            .map(|codeobj| PyCode::new(codeobj).into_ref(self))
+        match self.import_callback {
+            Some(import_callback) => compile::compile_with_callback(source, mode, source_path, self.settings.optimize, self.import_callback)
+                .map(|codeobj| PyCode::new(codeobj).into_ref(self)),
+            None => compile::compile(source, mode, source_path, self.settings.optimize)
+                .map(|codeobj| PyCode::new(codeobj).into_ref(self)),
+        }
     }
 
     pub fn _sub(&self, a: PyObjectRef, b: PyObjectRef) -> PyResult {
