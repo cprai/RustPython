@@ -66,7 +66,7 @@ pub fn import_file(
     file_path: String,
     content: String,
 ) -> PyResult {
-    match vm.import_callback {
+    match &vm.import_callback {
         Some(import_callback) => {
             let code_obj = compile::compile_with_callback(
                 &content,
