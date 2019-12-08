@@ -81,12 +81,12 @@ pub fn compile_with_callback(
     mode: Mode,
     source_path: String,
     optimize: u8,
-    import_callback: &'static dyn Fn(ast::Program, &str) -> ast::Program,
+    import_callback: Box<dyn Fn(ast::Program, &str) -> ast::Program>,
 ) -> Result<CodeObject, CompileError> {
     match mode {
         Mode::Exec => {
             let ast = parser::parse_program(source)?;
-            let modified_ast = import_callback(ast, source);
+            let modified_ast = (*import_callback)(ast, source);
             compile_program(modified_ast, source_path, optimize)
         }
         Mode::Eval => {
